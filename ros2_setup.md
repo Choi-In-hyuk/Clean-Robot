@@ -92,18 +92,91 @@ source ~/ros2_ws/install/setup.bash
 ros2 launch franka_gazebo_bringup gazebo_joint_position_controller_example.launch.py load_gripper:=true
 ```
 
-## Available Launch Files
+### Available Launch Files
 
-### Gazebo Examples
+#### Gazebo Examples
 ```bash
 ros2 launch franka_gazebo_bringup gazebo_joint_impedance_controller_example.launch.py load_gripper:=true
 ros2 launch franka_gazebo_bringup gazebo_joint_position_controller_example.launch.py load_gripper:=true
 ros2 launch franka_gazebo_bringup gazebo_joint_velocity_controller_example.launch.py load_gripper:=true
 ```
 
-### Check Launch Arguments
+#### Check Launch Arguments
 ```bash
 ros2 launch franka_gazebo_bringup gazebo_joint_position_controller_example.launch.py --show-args
+```
+
+## 5. OpenVLA-OFT with ROS2 Integration
+
+### Create ROS2 Publisher
+```bash
+cd ~/choi_ws/openvla-oft/experiments/robot/libero
+cat > ros2_publisher.py << 'EOF'
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Float64MultiArray
+import numpy as np
+
+
+class ActionPublisher(Node):
+    def __init__(self):
+        super().__init__('openvla_action_publisher')
+        self.publisher = self.create_publisher(
+            Float64MultiArray,
+            '/openvla_action',
+            10
+        )
+        
+    def publish_action(self, action):
+        msg = Float64MultiArray()
+        msg.data = action.tolist() if isinstance(action, np.ndarray) else action
+        self.publisher.publish(msg)
+
+
+def init_ros2():
+    rclpy.init()
+    return ActionPublisher()
+
+
+def shutdown_ros2(publisher):
+    publisher.destroy_node()
+    rclpy.shutdown()
+EOF
+```
+
+### Run OpenVLA with ROS2
+```bash
+cd ~/choi_ws/openvla-oft
+source /opt/ros/humble/setup.bash
+conda activate openvla
+
+python experiments/robot/libero/run_libero_ros2_eval.py \
+  --pretrained_checkpoint /home/choi/choi_ws/openvla-oft/finetuned_checkpoints_custom2/openvla-7b+libero_10_no_noops+b4+lr-0.0005+lora-r32+dropout-0.0--image_aug--40000_chkpt \
+  --task_suite_name libero_10 \
+  --center_crop True \
+  --num_trials_per_task 1
+```
+
+### Verify ROS2 Topics
+```bash
+source /opt/ros/humble/setup.bash
+ros2 topic list
+ros2 topic echo /openvla_action
+```
+
+Expected output format:
+```yaml
+layout:
+  dim: []
+  data_offset: 0
+data:
+- -0.012517858351649092  # x
+- -0.008569134183861182  # y
+- -0.02866906572588923   # z
+- 0.0008893755872159681  # rx
+- 0.007394852049665196   # ry
+- -0.012453790469036663  # rz
+- -1.0                   # gripper (-1=close, 1=open)
 ```
 
 ## Troubleshooting
@@ -117,3 +190,16 @@ source ~/ros2_ws/install/setup.bash
 ```bash
 echo "source ~/ros2_ws/install/setup.bash" >> ~/.bashrc
 ```
+
+### Use with conda environment
+```bash
+source /opt/ros/humble/setup.bash
+conda activate openvla
+```
+
+## Next Steps
+
+To control the Gazebo Franka robot with OpenVLA actions, you need to:
+1. Create a custom Cartesian controller that accepts external commands
+2. Subscribe to `/openvla_action` topic
+3. Convert Cartesian actions to robot commands
