@@ -1,77 +1,73 @@
 # LIBERO-10 Dataset Information
 
-## Overview
-- **Dataset Name**: liber_o10
+## Dataset Overview
+
+- **Name**: `liber_o10`
 - **Version**: 1.0.0
-- **Total Size**: 3.5GB (3,656,799,026 bytes)
+- **Format**: TFRecord
+- **Total Size**: 3.5 GB
 - **Total Episodes**: 379
-- **File Format**: TFRecord
-- **Number of Shards**: 32
+- **Shards**: 32 files (11-12 episodes each)
 
-## Dataset Statistics
-- **Episodes per shard**: 11-12 episodes
-- **Average episode length**: ~214 steps (variable length)
-- **Split**: train only
+## Episode Hierarchy
 
-## Directory Structure
 ```
-libero_10_no_noops_backup/1.0.0/
-├── dataset_info.json           # Dataset metadata
-├── features.json               # Feature schema definition
-└── liber_o10-train.tfrecord-*  # 32 TFRecord files (00000-00031)
-```
-
-## Data Structure
-
-### Episode Level
-Each episode contains:
-- `episode_metadata`: Metadata about the episode
-  - `file_path` (Text): Path to the original data file
-
-- `steps`: Sequence of timesteps with variable length
-
-### Step Level (per timestep)
-Each step contains:
-
-#### Action
-- `action` (float32[7]): Robot end-effector action
-
-#### Observation
-- `observation/image` (uint8[256, 256, 3]): Main camera RGB image (JPEG encoded)
-- `observation/wrist_image` (uint8[256, 256, 3]): Wrist camera RGB image (JPEG encoded)
-- `observation/state` (float32[8]): Robot end-effector state (6D pose + 2D gripper)
-- `observation/joint_state` (float32[7]): Robot joint angles
-
-#### Task Information
-- `language_instruction` (Text): Natural language instruction for the task
-
-#### Episode Flags
-- `is_first` (bool): True on the first step of the episode
-- `is_last` (bool): True on the last step of the episode
-- `is_terminal` (bool): True on the terminal step (always True for demonstrations)
-
-#### Reward/Discount
-- `reward` (float32): Reward value (1.0 on final step for demonstrations, 0.0 otherwise)
-- `discount` (float32): Discount factor (default: 1.0)
-
-## Example Episode
-First episode from `liber_o10-train.tfrecord-00000-of-00032`:
-- **Steps**: 214
-- **Language instruction length**: 87 bytes
-- **Main camera image size**: ~17.9KB (JPEG compressed)
-- **Wrist camera image size**: ~17.0KB (JPEG compressed)
-
-## Sample Data Values
-```
-action: [0.016, 0.0, -0.0, 0.0, 0.0, -0.0, -1.0, ...]
-state: [-0.053, 0.007, 0.678, 3.141, 0.002, -0.090, 0.039, -0.039]
-joint_state: [0.004, -0.141, 0.011, -2.431, 0.004, 2.233, 0.797]
-discount: [1.0, 1.0, 1.0, ...]
-reward: [0.0, 0.0, 0.0, ..., 1.0]  # 1.0 on final step
+Episode
+├── steps (variable length sequence)
+│   ├── action: float32[7]
+│   ├── observation
+│   │   ├── image: uint8[256,256,3] (JPEG)
+│   │   ├── wrist_image: uint8[256,256,3] (JPEG)
+│   │   ├── state: float32[8]
+│   │   └── joint_state: float32[7]
+│   ├── language_instruction: string
+│   ├── reward: float32
+│   ├── discount: float32
+│   ├── is_first: bool
+│   ├── is_last: bool
+│   └── is_terminal: bool
+└── episode_metadata
+    └── file_path: string
 ```
 
-## Notes
-- All images are JPEG encoded to reduce storage size
-- Episode length is variable (not fixed)
-- This is a demonstration dataset (all episodes are successful demonstrations)
-- No-ops have been removed from the original LIBERO-10 dataset
+## Feature Descriptions
+
+| Feature | Type | Shape | Description |
+|---------|------|-------|-------------|
+| **action** | float32 | [7] | Robot EEF action (6D pose + gripper) |
+| **observation/image** | uint8 | [256,256,3] | Main camera RGB (JPEG) |
+| **observation/wrist_image** | uint8 | [256,256,3] | Wrist camera RGB (JPEG) |
+| **observation/state** | float32 | [8] | Robot EEF state (6D pose + 2D gripper) |
+| **observation/joint_state** | float32 | [7] | Robot joint angles |
+| **language_instruction** | string | - | Natural language task description |
+| **reward** | float32 | - | 1.0 on final step, 0.0 otherwise |
+| **discount** | float32 | - | Default 1.0 |
+| **is_first** | bool | - | True on first step |
+| **is_last** | bool | - | True on last step |
+| **is_terminal** | bool | - | True on terminal step |
+
+## TFRecord Storage Format
+
+Each episode is stored as a flattened `tf.train.Example`:
+
+```
+steps/action: float_list[num_steps × 7]
+steps/observation/image: bytes_list[num_steps]
+steps/observation/wrist_image: bytes_list[num_steps]
+steps/observation/state: float_list[num_steps × 8]
+steps/observation/joint_state: float_list[num_steps × 7]
+steps/language_instruction: bytes_list[num_steps]
+steps/reward: float_list[num_steps]
+steps/discount: float_list[num_steps]
+steps/is_first: int64_list[num_steps]
+steps/is_last: int64_list[num_steps]
+steps/is_terminal: int64_list[num_steps]
+episode_metadata/file_path: bytes_list[1]
+```
+
+## Sample Episode Statistics
+
+- Episode length: ~214 timesteps (average)
+- Main camera image: ~17.9 KB/frame (JPEG)
+- Wrist camera image: ~17.0 KB/frame (JPEG)
+- Language instruction: ~87 bytes
