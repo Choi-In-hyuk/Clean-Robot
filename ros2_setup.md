@@ -151,10 +151,8 @@ source /opt/ros/humble/setup.bash
 conda activate openvla
 
 python experiments/robot/libero/run_libero_ros2_eval.py \
-  --pretrained_checkpoint /home/choi/choi_ws/openvla-oft/finetuned_checkpoints_custom2/openvla-7b+libero_10_no_noops+b4+lr-0.0005+lora-r32+dropout-0.0--image_aug--40000_chkpt \
-  --task_suite_name libero_10 \
-  --center_crop True \
-  --num_trials_per_task 1
+  --pretrained_checkpoint moojink/openvla-7b-oft-finetuned-libero-object \
+  --task_suite_name libero_object
 ```
 
 ### Verify ROS2 Topics
