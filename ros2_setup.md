@@ -152,7 +152,8 @@ conda activate openvla
 
 python experiments/robot/libero/run_libero_ros2_eval.py \
   --pretrained_checkpoint moojink/openvla-7b-oft-finetuned-libero-object \
-  --task_suite_name libero_object
+  --task_suite_name libero_object \
+  --center_crop True
 ```
 
 ### Verify ROS2 Topics
