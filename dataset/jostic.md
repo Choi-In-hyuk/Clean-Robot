@@ -353,3 +353,202 @@ ros2 topic echo /joystick/twist
 - [ ] Gazebo에서 로봇 제어 테스트
 - [ ] RealSense 카메라 통합
 - [ ] 데이터 수집 파이프라인 구축
+
+## 13. 조이스틱-로봇 브릿지 노드 작성
+
+조이스틱 입력을 joint velocity 명령으로 변환하는 브릿지 노드를 만듭니다.
+```bash
+nano ~/ros2_ws/src/franka_teleop_collection/franka_teleop_collection/joystick_to_joint_bridge.py
+```
+```python
+"""
+Bridge node: Joystick twist -> Joint velocity commands
+Simple mapping without IK for quick testing
+"""
+
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import TwistStamped
+from std_msgs.msg import Float64MultiArray
+import numpy as np
+
+
+class JoystickToJointBridge(Node):
+    """
+    Subscribes to /joystick/twist
+    Publishes to /joint_velocity_controller/commands
+    """
+    
+    def __init__(self):
+        super().__init__('joystick_to_joint_bridge')
+        
+        # Subscribe to joystick twist
+        self.twist_sub = self.create_subscription(
+            TwistStamped,
+            '/joystick/twist',
+            self.twist_callback,
+            10
+        )
+        
+        # Publish joint velocities
+        self.joint_vel_pub = self.create_publisher(
+            Float64MultiArray,
+            '/joint_velocity_controller/commands',
+            10
+        )
+        
+        self.get_logger().info("Joystick to Joint Bridge started")
+        
+    def twist_callback(self, msg):
+        """
+        Convert twist to joint velocities
+        Simple mapping: use first 6 DOF
+        """
+        joint_vel = Float64MultiArray()
+        
+        # Map twist to joints with higher gain
+        joint_vel.data = [
+            msg.twist.linear.x * 200.0,   # Joint 1
+            msg.twist.linear.y * 200.0,   # Joint 2
+            msg.twist.linear.z * 200.0,   # Joint 3
+            msg.twist.angular.x * 100.0,  # Joint 4
+            msg.twist.angular.y * 100.0,  # Joint 5
+            msg.twist.angular.z * 100.0,  # Joint 6
+            0.0                            # Joint 7
+        ]
+        
+        self.joint_vel_pub.publish(joint_vel)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = JoystickToJointBridge()
+    
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+## 14. setup.py에 브릿지 노드 추가
+```bash
+nano ~/ros2_ws/src/franka_teleop_collection/setup.py
+```
+
+`entry_points`에 브릿지 노드 추가:
+```python
+    entry_points={
+        'console_scripts': [
+            'joystick_node = franka_teleop_collection.devices.joystick_device:main',
+            'joystick_bridge = franka_teleop_collection.joystick_to_joint_bridge:main',
+        ],
+    },
+```
+
+## 15. 패키지 빌드
+```bash
+cd ~/ros2_ws
+colcon build --packages-select franka_teleop_collection
+source ~/ros2_ws/install/setup.bash
+```
+
+## 16. JointGroupVelocityController 설정 파일 작성
+
+표준 velocity controller를 사용하기 위한 설정 파일을 만듭니다.
+```bash
+nano ~/ros2_ws/src/franka_teleop_collection/config/franka_velocity_controller.yaml
+```
+```yaml
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    
+    joint_velocity_controller:
+      type: velocity_controllers/JointGroupVelocityController
+
+joint_velocity_controller:
+  ros__parameters:
+    joints:
+      - fr3_joint1
+      - fr3_joint2
+      - fr3_joint3
+      - fr3_joint4
+      - fr3_joint5
+      - fr3_joint6
+      - fr3_joint7
+```
+
+## 17. Gazebo에서 조이스틱으로 로봇 제어 테스트
+
+### 터미널 1: Gazebo 실행
+```bash
+source ~/ros2_ws/install/setup.bash
+ros2 launch franka_gazebo_bringup gazebo_joint_velocity_controller_example.launch.py load_gripper:=true
+```
+
+### 터미널 2: 표준 Velocity Controller 로드
+
+Gazebo가 완전히 로드된 후:
+```bash
+source ~/ros2_ws/install/setup.bash
+ros2 control set_controller_state joint_velocity_example_controller inactive
+ros2 run controller_manager spawner joint_velocity_controller --controller-type velocity_controllers/JointGroupVelocityController --param-file ~/ros2_ws/src/franka_teleop_collection/config/franka_velocity_controller.yaml
+```
+
+예상 출력:
+```
+[INFO] [spawner_joint_velocity_controller]: Loaded joint_velocity_controller
+[INFO] [spawner_joint_velocity_controller]: Configured and activated joint_velocity_controller
+```
+
+### 터미널 3: 조이스틱 노드 실행
+```bash
+source ~/ros2_ws/install/setup.bash
+ros2 run franka_teleop_collection joystick_node
+```
+
+### 터미널 4: 브릿지 노드 실행
+```bash
+source ~/ros2_ws/install/setup.bash
+ros2 run franka_teleop_collection joystick_bridge
+```
+
+조이스틱을 움직이면 Gazebo에서 로봇이 움직여야 합니다!
+
+## 18. 디버깅 및 확인 명령어
+
+### 컨트롤러 상태 확인
+```bash
+ros2 control list_controllers
+```
+
+### 토픽 확인
+```bash
+ros2 topic list | grep command
+ros2 topic echo /joint_velocity_controller/commands
+```
+
+### 조이스틱 입력 확인
+```bash
+ros2 topic echo /joystick/twist
+```
+
+## 주의사항
+
+- **gain 값**: 브릿지 노드의 gain 값(200.0, 100.0)은 조이스틱 민감도에 따라 조정 필요
+- **안전성**: 실제 로봇에서는 속도 제한과 안전 체크 추가 필요
+- **매핑**: 현재는 간단한 1:1 매핑이며, 실제로는 IK(Inverse Kinematics) 필요
+
+## 다음 단계
+
+- [ ] RealSense 카메라 통합
+- [ ] 데이터 수집 파이프라인 구축
+- [ ] 실제 로봇 테스트
+- [ ] Inverse Kinematics 구현으로 Cartesian control 개선
